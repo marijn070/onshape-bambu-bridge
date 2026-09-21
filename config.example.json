@@ -1,0 +1,9 @@
+{
+  "onshape_access_key": "YOUR_ACCESS_KEY",
+  "onshape_secret_key": "YOUR_SECRET_KEY",
+  "onshape_base_url": "https://cad.onshape.com",
+  "bambu_studio_cmd": ["flatpak", "run", "com.bambulab.BambuStudio"],
+  "export_dir": "",
+  "export_format": "3MF",
+  "port": 7777
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=Onshape -> Bambu Studio bridge
+After=network.target graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/onshape-bambu-bridge/.venv/bin/python %h/.local/share/onshape-bambu-bridge/server/main.py
+Restart=on-failure
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
