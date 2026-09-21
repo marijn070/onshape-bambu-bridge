@@ -33,7 +33,6 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/onshape-bambu-bridge"
 CONFIG_PATH="$CONFIG_DIR/config.json"
 SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT_PATH="$SYSTEMD_USER_DIR/onshape-bambu-bridge.service"
-OLD_VENV_DIR="$APP_DIR/.venv"
 
 USERSCRIPT_RAW_URL="https://raw.githubusercontent.com/marijn070/onshape-bambu-bridge/main/userscript/onshape-bambu.user.js"
 TAMPERMONKEY_CHROME_URL="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo"
@@ -76,10 +75,6 @@ else
     curl -fsSL "$GITHUB_RAW_BASE/server/smoke_test.py" -o "$APP_DIR/server/smoke_test.py"
 fi
 chmod +x "$APP_DIR/server/main.py" "$APP_DIR/server/smoke_test.py"
-if [ -d "$OLD_VENV_DIR" ]; then
-    log "Removing old pip venv from a previous install ($OLD_VENV_DIR)"
-    rm -rf "$OLD_VENV_DIR"
-fi
 
 # ---------- 3. Onshape API key ----------
 mkdir -p "$CONFIG_DIR"
