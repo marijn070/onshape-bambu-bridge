@@ -15,6 +15,7 @@ swapped out:
 | | Windows (upstream) | Linux (this repo) |
 |---|---|---|
 | Install | `install.ps1` | `install.sh` |
+| Python deps | `venv` + `pip install -r requirements.txt` | [`uv run --script`](https://docs.astral.sh/uv/guides/scripts/) — deps are declared inline in `main.py`, no venv to manage |
 | Autostart | Startup folder `.vbs` | `systemd --user` service |
 | Config location | `config.json` next to the code | `~/.config/onshape-bambu-bridge/config.json` |
 | Launching Bambu Studio | path to `bambu-studio.exe` | `bambu_studio_cmd` — works with Flatpak, an AppImage, or a native binary |
@@ -43,7 +44,9 @@ of it).
 ## Requirements
 
 - Linux with a `systemd --user` session (true for most modern distros)
-- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) — the installer offers to install it for
+  you if it's missing. uv provisions Python itself, so you don't need a
+  system Python at all.
 - Bambu Studio — Flatpak (`com.bambulab.BambuStudio`), AppImage, or a native
   binary all work
 - [Tampermonkey](https://www.tampermonkey.net/) (or a compatible userscript
@@ -54,7 +57,7 @@ of it).
 
 ### 1. Get an Onshape API key
 
-1. Sign in at [dev-portal.onshape.com](https://dev-portal.onshape.com).
+1. Sign in at [cad.onshape.com/user/developer](https://cad.onshape.com/user/developer).
 2. Go to **API keys** → **Create new API key**.
 3. Grant it at least **OAuth2Read** scope (read documents). Read/write are
    both fine.
@@ -71,25 +74,36 @@ cd onshape-bambu-bridge
 
 The installer will:
 
-- Verify Python 3.10+
-- Set up a venv under `~/.local/share/onshape-bambu-bridge` and install deps
+- Check for `uv` and offer to install it if it's missing
 - Prompt for your Onshape access + secret key (secret input is hidden)
 - Auto-detect Bambu Studio (Flatpak, then PATH, then common AppImage
   locations; falls back to asking for a path)
 - Write `~/.config/onshape-bambu-bridge/config.json` (`chmod 600`)
-- Run a smoke test against the Onshape API
+- Run a smoke test against the Onshape API (via `uv run --script`, which
+  transparently fetches Python + dependencies on first run and caches them)
 - Install and start a `systemd --user` service
+- Offer to open the Tampermonkey + userscript install pages in your browser
 
 Re-run `./install.sh` any time to update credentials or the detected Bambu
 Studio path.
 
 ### 3. Install the userscript
 
+The installer's last step opens two browser tabs for you: the Tampermonkey
+extension page, and the userscript's raw GitHub URL. If Tampermonkey is
+already installed, navigating to a `.user.js` URL makes Tampermonkey show
+its own **Install this script?** page — click **Install** and you're done,
+no copy-paste needed. (Browsers don't let a terminal script silently install
+an extension or confirm that native dialog for you, so a human click on
+each of those two pages is unavoidable — this just skips everything else.)
+
+To do it manually instead:
+
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
-2. Open [`userscript/onshape-bambu.user.js`](userscript/onshape-bambu.user.js),
-   copy the entire contents.
-3. Tampermonkey icon → **Create a new script** → paste over the template →
-   Ctrl+S.
+2. Open [`userscript/onshape-bambu.user.js`](https://raw.githubusercontent.com/marijn070/onshape-bambu-bridge/main/userscript/onshape-bambu.user.js) —
+   Tampermonkey should offer to install it directly. If not, copy the file's
+   contents and use Tampermonkey icon → **Create a new script** → paste over
+   the template → Ctrl+S.
 
 ### 4. Use it
 
@@ -181,9 +195,8 @@ onshape-bambu-bridge/
 ├─ LICENSE                    # MIT
 ├─ README.md
 ├─ server/
-│  ├─ main.py                 # FastAPI bridge service
+│  ├─ main.py                 # FastAPI bridge service — deps declared inline (PEP 723), run via `uv run --script`
 │  ├─ smoke_test.py           # Onshape auth check used by install.sh
-│  ├─ requirements.txt
 │  └─ onshape-bambu-bridge.service.example  # Reference unit (install.sh generates the real one with resolved paths)
 └─ userscript/
    └─ onshape-bambu.user.js   # Tampermonkey button + modal (unchanged from upstream)
@@ -200,7 +213,7 @@ onshape-bambu-bridge/
   personal machine that's a non-issue; on a shared machine, consider adding
   a shared-secret header — PRs welcome.
 - The Onshape secret key is stored in plaintext on disk. If you suspect it
-  leaked, rotate it at [dev-portal.onshape.com](https://dev-portal.onshape.com).
+  leaked, rotate it at [cad.onshape.com/user/developer](https://cad.onshape.com/user/developer).
 
 ## Troubleshooting
 

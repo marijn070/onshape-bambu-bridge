@@ -1,3 +1,12 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "fastapi==0.115.0",
+#     "uvicorn[standard]==0.30.6",
+#     "httpx==0.27.2",
+# ]
+# ///
 """
 Onshape -> Bambu Studio bridge (Linux).
 
@@ -7,9 +16,10 @@ launch Bambu Studio with the resulting files.
 
 Linux port of https://github.com/adamgmakes/OnShape-BambuStudio-Bridge -
 same Onshape REST calls and the same userscript, but config lives under
-XDG_CONFIG_HOME, the process is meant to run as a systemd --user service,
-and Bambu Studio is launched via whatever command config.json points at
-(Flatpak, AppImage, or a native binary all work).
+XDG_CONFIG_HOME, the process runs via `uv run --script` (dependencies
+above, no venv to manage) as a systemd --user service, and Bambu Studio is
+launched via whatever command config.json points at (Flatpak, AppImage, or
+a native binary all work).
 """
 from __future__ import annotations
 

@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Interactive installer for the Onshape -> Bambu Studio bridge (Linux).
 #
-# - Creates a venv under ~/.local/share/onshape-bambu-bridge and installs deps
+# - Makes sure uv is available (offers to install it if not)
 # - Prompts for your Onshape API key pair
 # - Detects how to launch Bambu Studio (Flatpak / AppImage / native binary)
 # - Writes ~/.config/onshape-bambu-bridge/config.json (chmod 600)
 # - Runs a smoke test against the Onshape API
-# - Installs and starts a systemd --user service
+# - Installs and starts a systemd --user service that runs the bridge via
+#   `uv run --script` (deps are declared inline in server/main.py, no venv
+#   to create or maintain)
+# - Offers to open the Tampermonkey + userscript install pages in your browser
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,30 +18,39 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/onshape-bambu-bridge"
 CONFIG_PATH="$CONFIG_DIR/config.json"
 SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT_PATH="$SYSTEMD_USER_DIR/onshape-bambu-bridge.service"
-VENV_DIR="$APP_DIR/.venv"
+OLD_VENV_DIR="$APP_DIR/.venv"
+
+USERSCRIPT_RAW_URL="https://raw.githubusercontent.com/marijn070/onshape-bambu-bridge/main/userscript/onshape-bambu.user.js"
+TAMPERMONKEY_CHROME_URL="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo"
+TAMPERMONKEY_FIREFOX_URL="https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/"
 
 log()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$1"; }
 die()  { printf '\033[1;31mERROR:\033[0m %s\n' "$1" >&2; exit 1; }
 
-# ---------- 1. Python ----------
-command -v python3 >/dev/null 2>&1 || die "python3 not found on PATH."
-PY_OK=$(python3 -c 'import sys; print(1 if sys.version_info >= (3, 10) else 0)')
-[ "$PY_OK" = "1" ] || die "Python 3.10+ required, found $(python3 --version)."
-log "Using $(python3 --version)"
+# ---------- 1. uv ----------
+if ! command -v uv >/dev/null 2>&1; then
+    warn "uv (https://docs.astral.sh/uv/) is not installed. The bridge uses it to run" \
+         "server/main.py with its dependencies declared inline, no venv needed."
+    read -r -p "Install uv now via the official installer (curl -LsSf https://astral.sh/uv/install.sh | sh)? [y/N] " INSTALL_UV
+    if [[ "$INSTALL_UV" =~ ^[Yy]$ ]]; then
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+fi
+command -v uv >/dev/null 2>&1 || die "uv is required. Install it from https://docs.astral.sh/uv/getting-started/installation/ and re-run this installer."
+UV_BIN="$(command -v uv)"
+log "Using $($UV_BIN --version) at $UV_BIN"
 
-# ---------- 2. App dir + venv ----------
+# ---------- 2. App dir ----------
 log "Setting up $APP_DIR"
 mkdir -p "$APP_DIR"
 rm -rf "$APP_DIR/server"
 cp -a "$REPO_DIR/server" "$APP_DIR/server"
-
-if [ ! -d "$VENV_DIR" ]; then
-    log "Creating virtualenv"
-    python3 -m venv "$VENV_DIR"
+if [ -d "$OLD_VENV_DIR" ]; then
+    log "Removing old pip venv from a previous install ($OLD_VENV_DIR)"
+    rm -rf "$OLD_VENV_DIR"
 fi
-"$VENV_DIR/bin/pip" install --quiet --upgrade pip
-"$VENV_DIR/bin/pip" install --quiet -r "$APP_DIR/server/requirements.txt"
 
 # ---------- 3. Onshape API key ----------
 mkdir -p "$CONFIG_DIR"
@@ -47,12 +59,12 @@ chmod 700 "$CONFIG_DIR"
 EXISTING_ACCESS=""
 EXISTING_SECRET=""
 if [ -f "$CONFIG_PATH" ]; then
-    EXISTING_ACCESS=$(python3 -c "import json;print(json.load(open('$CONFIG_PATH')).get('onshape_access_key',''))" 2>/dev/null || true)
-    EXISTING_SECRET=$(python3 -c "import json;print(json.load(open('$CONFIG_PATH')).get('onshape_secret_key',''))" 2>/dev/null || true)
+    EXISTING_ACCESS=$("$UV_BIN" run python -c "import json;print(json.load(open('$CONFIG_PATH')).get('onshape_access_key',''))" 2>/dev/null || true)
+    EXISTING_SECRET=$("$UV_BIN" run python -c "import json;print(json.load(open('$CONFIG_PATH')).get('onshape_secret_key',''))" 2>/dev/null || true)
 fi
 
 echo
-echo "Get an Onshape API key pair at https://dev-portal.onshape.com -> API keys -> Create new API key"
+echo "Get an Onshape API key pair at https://cad.onshape.com/user/developer -> API keys -> Create new API key"
 echo "(read access is enough; the secret is shown only once)."
 echo
 
@@ -105,7 +117,7 @@ read -r -p "Local port [7777]: " PORT
 PORT="${PORT:-7777}"
 
 # ---------- 6. Write config.json ----------
-python3 - "$CONFIG_PATH" "$ACCESS_KEY" "$SECRET_KEY" "$EXPORT_DIR" "$EXPORT_FORMAT" "$PORT" "$BAMBU_CMD_JSON" <<'PY'
+"$UV_BIN" run python - "$CONFIG_PATH" "$ACCESS_KEY" "$SECRET_KEY" "$EXPORT_DIR" "$EXPORT_FORMAT" "$PORT" "$BAMBU_CMD_JSON" <<'PY'
 import json, sys
 path, access, secret, export_dir, export_format, port, bambu_cmd_json = sys.argv[1:8]
 cfg = {
@@ -125,8 +137,8 @@ chmod 600 "$CONFIG_PATH"
 log "Wrote $CONFIG_PATH (chmod 600)"
 
 # ---------- 7. Smoke test ----------
-log "Checking Onshape credentials..."
-"$VENV_DIR/bin/python" "$APP_DIR/server/smoke_test.py" || die "Smoke test failed. Re-run this installer to fix your API key."
+log "Checking Onshape credentials (uv will fetch a Python + deps for this on first run)..."
+"$UV_BIN" run --script "$APP_DIR/server/smoke_test.py" || die "Smoke test failed. Re-run this installer to fix your API key."
 
 # ---------- 8. systemd --user service ----------
 mkdir -p "$SYSTEMD_USER_DIR"
@@ -137,7 +149,8 @@ After=network.target graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=$VENV_DIR/bin/python $APP_DIR/server/main.py
+WorkingDirectory=$APP_DIR/server
+ExecStart=$UV_BIN run --script $APP_DIR/server/main.py
 Restart=on-failure
 RestartSec=2
 Environment=PYTHONUNBUFFERED=1
@@ -147,7 +160,10 @@ WantedBy=default.target
 UNIT
 
 systemctl --user daemon-reload
-systemctl --user enable --now onshape-bambu-bridge.service
+systemctl --user enable onshape-bambu-bridge.service
+# `enable --now` is a no-op if the service is already running under an old
+# unit file, so always restart explicitly to pick up ExecStart changes.
+systemctl --user restart onshape-bambu-bridge.service
 
 sleep 1
 if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
@@ -156,12 +172,29 @@ else
     warn "Bridge did not respond on port $PORT. Check: journalctl --user -u onshape-bambu-bridge -e"
 fi
 
+# ---------- 9. Userscript ----------
 echo
-log "Install complete. Next step: install the Tampermonkey userscript."
-echo "  1. Install the Tampermonkey extension in your browser."
-echo "  2. Open $REPO_DIR/userscript/onshape-bambu.user.js, copy its contents."
-echo "  3. Tampermonkey icon -> Create a new script -> paste -> Ctrl+S."
-echo "  4. Open any Part Studio at cad.onshape.com, click 'Send to Bambu'."
+log "Almost done — one browser step left for the Tampermonkey userscript."
+echo "If Tampermonkey is already installed, opening the raw userscript URL shows"
+echo "Tampermonkey's own 'Install this script?' page - one click and you're done."
+echo "(Browsers don't allow silently installing extensions or userscripts from a"
+echo "terminal, so this is as automated as it gets: two clicks, no copy/paste.)"
+echo
+if command -v xdg-open >/dev/null 2>&1; then
+    read -r -p "Open the Tampermonkey install page and the userscript install page now? [Y/n] " OPEN_BROWSER
+    if [[ ! "$OPEN_BROWSER" =~ ^[Nn]$ ]]; then
+        xdg-open "$TAMPERMONKEY_CHROME_URL" >/dev/null 2>&1 &
+        disown || true
+        sleep 1
+        xdg-open "$USERSCRIPT_RAW_URL" >/dev/null 2>&1 &
+        disown || true
+        log "Opened. Tab 1: install Tampermonkey if you haven't already. Tab 2: click Install."
+    fi
+else
+    echo "Install Tampermonkey: $TAMPERMONKEY_CHROME_URL (or, for Firefox: $TAMPERMONKEY_FIREFOX_URL)"
+    echo "Then open this URL and click Install: $USERSCRIPT_RAW_URL"
+fi
+
 echo
 echo "Manage the service with:"
 echo "  systemctl --user status onshape-bambu-bridge"
