@@ -1,11 +1,16 @@
 // ==UserScript==
 // @name         Onshape -> Bambu Studio (Linux bridge)
 // @namespace    https://github.com/marijn070/onshape-bambu-bridge
-// @version      0.1.0
-// @description  Send selected parts from the current Onshape Part Studio to Bambu Studio.
+// @version      0.1.1
+// @description  Send selected parts from the current Onshape Part Studio to Bambu Studio, via a local companion service (see homepage for setup).
 // @match        https://cad.onshape.com/documents/*
 // @run-at       document-idle
 // @grant        none
+// @license      MIT
+// @homepageURL  https://github.com/marijn070/onshape-bambu-bridge
+// @supportURL   https://github.com/marijn070/onshape-bambu-bridge/issues
+// @updateURL    https://raw.githubusercontent.com/marijn070/onshape-bambu-bridge/main/userscript/onshape-bambu.user.js
+// @downloadURL  https://raw.githubusercontent.com/marijn070/onshape-bambu-bridge/main/userscript/onshape-bambu.user.js
 // ==/UserScript==
 
 (function () {

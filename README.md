@@ -105,6 +105,20 @@ To do it manually instead:
    contents and use Tampermonkey icon → **Create a new script** → paste over
    the template → Ctrl+S.
 
+Once installed this way, it **stays up to date on its own**: the script's
+`@updateURL`/`@downloadURL` point at this raw GitHub file, so Tampermonkey
+periodically checks it (and you can force a check any time from Tampermonkey
+→ Dashboard → Check for userscript updates). No Greasy Fork or other
+third-party registry needed for that part.
+
+If you'd rather publish it there anyway — for discoverability, not because
+it's required for updates — [Greasy Fork](https://greasyfork.org/) supports
+"syncing" a listing from an external URL, so you could point it at this same
+raw file and it'll pick up future commits automatically. That first
+submission has to come from you, though: it needs your own Greasy Fork
+account and going through their web form once. Ping me if you want a hand
+drafting the listing text.
+
 ### 4. Use it
 
 1. Open any Part Studio at `cad.onshape.com`.
