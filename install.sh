@@ -180,10 +180,25 @@ echo "Tampermonkey's own 'Install this script?' page - one click and you're done
 echo "(Browsers don't allow silently installing extensions or userscripts from a"
 echo "terminal, so this is as automated as it gets: two clicks, no copy/paste.)"
 echo
+
+# Pick the right extension store for the user's actual default browser
+# (xdg-open just hands off to whatever that is - Firefox-family browsers
+# can't install from the Chrome Web Store, and vice versa).
+DEFAULT_BROWSER="$(xdg-settings get default-web-browser 2>/dev/null || true)"
+DEFAULT_BROWSER="${DEFAULT_BROWSER,,}"
+case "$DEFAULT_BROWSER" in
+    *firefox*|*zen*|*librewolf*|*waterfox*|*floorp*|*seamonkey*|*icecat*)
+        TAMPERMONKEY_URL="$TAMPERMONKEY_FIREFOX_URL"
+        ;;
+    *)
+        TAMPERMONKEY_URL="$TAMPERMONKEY_CHROME_URL"
+        ;;
+esac
+
 if command -v xdg-open >/dev/null 2>&1; then
     read -r -p "Open the Tampermonkey install page and the userscript install page now? [Y/n] " OPEN_BROWSER
     if [[ ! "$OPEN_BROWSER" =~ ^[Nn]$ ]]; then
-        xdg-open "$TAMPERMONKEY_CHROME_URL" >/dev/null 2>&1 &
+        xdg-open "$TAMPERMONKEY_URL" >/dev/null 2>&1 &
         disown || true
         sleep 1
         xdg-open "$USERSCRIPT_RAW_URL" >/dev/null 2>&1 &
@@ -191,7 +206,8 @@ if command -v xdg-open >/dev/null 2>&1; then
         log "Opened. Tab 1: install Tampermonkey if you haven't already. Tab 2: click Install."
     fi
 else
-    echo "Install Tampermonkey: $TAMPERMONKEY_CHROME_URL (or, for Firefox: $TAMPERMONKEY_FIREFOX_URL)"
+    echo "Install Tampermonkey: $TAMPERMONKEY_URL"
+    echo "(Chrome-family: $TAMPERMONKEY_CHROME_URL — Firefox-family: $TAMPERMONKEY_FIREFOX_URL)"
     echo "Then open this URL and click Install: $USERSCRIPT_RAW_URL"
 fi
 
