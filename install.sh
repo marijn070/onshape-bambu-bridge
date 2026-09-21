@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# Interactive installer for the Onshape -> Bambu Studio bridge (Linux).
+# Installer for the Onshape -> Bambu Studio bridge (Linux).
 #
+# Works two ways:
+#   - From a local checkout: ./install.sh (uses the server/ files next to it)
+#   - Standalone: curl -fsSL <raw-url>/install.sh | bash (downloads the two
+#     server files it needs straight from GitHub - no git clone required)
+#
+# Either way it:
 # - Makes sure uv is available (offers to install it if not)
 # - Prompts for your Onshape API key pair
 # - Detects how to launch Bambu Studio (Flatpak / AppImage / native binary)
@@ -12,7 +18,16 @@
 # - Offers to open the Tampermonkey + userscript install pages in your browser
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GITHUB_RAW_BASE="https://raw.githubusercontent.com/marijn070/onshape-bambu-bridge/main"
+
+# Only set when actually run as a file (./install.sh, bash install.sh) - a
+# piped `curl ... | bash` has no real BASH_SOURCE, which is how we tell the
+# two install modes apart.
+REPO_DIR=""
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+    REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/onshape-bambu-bridge"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/onshape-bambu-bridge"
 CONFIG_PATH="$CONFIG_DIR/config.json"
@@ -28,11 +43,17 @@ log()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$1"; }
 die()  { printf '\033[1;31mERROR:\033[0m %s\n' "$1" >&2; exit 1; }
 
+# This installer prompts for several things (API key, Bambu Studio path,
+# export format...). When run as `curl ... | bash`, bash consumes stdin as
+# the script source itself, so every prompt below reads from /dev/tty
+# instead - that only works with a real terminal behind it.
+: </dev/tty 2>/dev/null || die "This installer needs an interactive terminal (it prompts for your Onshape API key, Bambu Studio path, etc). Download it and run it directly instead: curl -fsSL $GITHUB_RAW_BASE/install.sh -o /tmp/onshape-bambu-install.sh && bash /tmp/onshape-bambu-install.sh"
+
 # ---------- 1. uv ----------
 if ! command -v uv >/dev/null 2>&1; then
     warn "uv (https://docs.astral.sh/uv/) is not installed. The bridge uses it to run" \
          "server/main.py with its dependencies declared inline, no venv needed."
-    read -r -p "Install uv now via the official installer (curl -LsSf https://astral.sh/uv/install.sh | sh)? [y/N] " INSTALL_UV
+    read -r -p "Install uv now via the official installer (curl -LsSf https://astral.sh/uv/install.sh | sh)? [y/N] " INSTALL_UV </dev/tty
     if [[ "$INSTALL_UV" =~ ^[Yy]$ ]]; then
         curl -LsSf https://astral.sh/uv/install.sh | sh
         export PATH="$HOME/.local/bin:$PATH"
@@ -44,9 +65,17 @@ log "Using $($UV_BIN --version) at $UV_BIN"
 
 # ---------- 2. App dir ----------
 log "Setting up $APP_DIR"
-mkdir -p "$APP_DIR"
 rm -rf "$APP_DIR/server"
-cp -a "$REPO_DIR/server" "$APP_DIR/server"
+mkdir -p "$APP_DIR/server"
+if [ -n "$REPO_DIR" ] && [ -f "$REPO_DIR/server/main.py" ]; then
+    log "Installing server files from local checkout ($REPO_DIR)"
+    cp "$REPO_DIR/server/main.py" "$REPO_DIR/server/smoke_test.py" "$APP_DIR/server/"
+else
+    log "Downloading server files from $GITHUB_RAW_BASE"
+    curl -fsSL "$GITHUB_RAW_BASE/server/main.py" -o "$APP_DIR/server/main.py"
+    curl -fsSL "$GITHUB_RAW_BASE/server/smoke_test.py" -o "$APP_DIR/server/smoke_test.py"
+fi
+chmod +x "$APP_DIR/server/main.py" "$APP_DIR/server/smoke_test.py"
 if [ -d "$OLD_VENV_DIR" ]; then
     log "Removing old pip venv from a previous install ($OLD_VENV_DIR)"
     rm -rf "$OLD_VENV_DIR"
@@ -68,11 +97,11 @@ echo "Get an Onshape API key pair at https://cad.onshape.com/user/developer -> A
 echo "(read access is enough; the secret is shown only once)."
 echo
 
-read -r -p "Onshape access key${EXISTING_ACCESS:+ [press enter to keep existing]}: " ACCESS_KEY
+read -r -p "Onshape access key${EXISTING_ACCESS:+ [press enter to keep existing]}: " ACCESS_KEY </dev/tty
 ACCESS_KEY="${ACCESS_KEY:-$EXISTING_ACCESS}"
 [ -n "$ACCESS_KEY" ] || die "Access key is required."
 
-read -r -s -p "Onshape secret key${EXISTING_SECRET:+ [press enter to keep existing]}: " SECRET_KEY
+read -r -s -p "Onshape secret key${EXISTING_SECRET:+ [press enter to keep existing]}: " SECRET_KEY </dev/tty
 echo
 SECRET_KEY="${SECRET_KEY:-$EXISTING_SECRET}"
 [ -n "$SECRET_KEY" ] || die "Secret key is required."
@@ -103,17 +132,17 @@ fi
 
 if [ -z "$BAMBU_CMD_JSON" ]; then
     warn "Could not auto-detect Bambu Studio."
-    read -r -p "Enter the full path to the Bambu Studio executable or AppImage: " MANUAL_PATH
+    read -r -p "Enter the full path to the Bambu Studio executable or AppImage: " MANUAL_PATH </dev/tty
     [ -x "$MANUAL_PATH" ] || die "$MANUAL_PATH is not an executable file."
     BAMBU_CMD_JSON="[\"$MANUAL_PATH\"]"
 fi
 
 # ---------- 5. Export format / dir ----------
-read -r -p "Export format, 3MF or STL [3MF]: " EXPORT_FORMAT
+read -r -p "Export format, 3MF or STL [3MF]: " EXPORT_FORMAT </dev/tty
 EXPORT_FORMAT="${EXPORT_FORMAT:-3MF}"
-read -r -p "Export directory [~/OnshapeExports]: " EXPORT_DIR
+read -r -p "Export directory [~/OnshapeExports]: " EXPORT_DIR </dev/tty
 EXPORT_DIR="${EXPORT_DIR:-$HOME/OnshapeExports}"
-read -r -p "Local port [7777]: " PORT
+read -r -p "Local port [7777]: " PORT </dev/tty
 PORT="${PORT:-7777}"
 
 # ---------- 6. Write config.json ----------
@@ -196,7 +225,7 @@ case "$DEFAULT_BROWSER" in
 esac
 
 if command -v xdg-open >/dev/null 2>&1; then
-    read -r -p "Open the Tampermonkey install page and the userscript install page now? [Y/n] " OPEN_BROWSER
+    read -r -p "Open the Tampermonkey install page and the userscript install page now? [Y/n] " OPEN_BROWSER </dev/tty
     if [[ ! "$OPEN_BROWSER" =~ ^[Nn]$ ]]; then
         xdg-open "$TAMPERMONKEY_URL" >/dev/null 2>&1 &
         disown || true

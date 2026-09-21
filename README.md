@@ -66,13 +66,33 @@ of it).
 
 ### 2. Install
 
+No git clone needed — the installer pulls the two files it needs
+(`server/main.py`, `server/smoke_test.py`) straight from this repo:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marijn070/onshape-bambu-bridge/main/install.sh | bash
+```
+
+It's an interactive script (asks for your API key, etc.), so read it first
+if you'd rather not pipe straight into `bash`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marijn070/onshape-bambu-bridge/main/install.sh -o install.sh
+less install.sh   # or your editor of choice
+bash install.sh
+```
+
+Cloning the repo works too, and is the better option if you want to read or
+modify the code long-term — `install.sh` detects it's running from a
+checkout and uses those local files instead of downloading them:
+
 ```bash
 git clone https://github.com/marijn070/onshape-bambu-bridge.git
 cd onshape-bambu-bridge
 ./install.sh
 ```
 
-The installer will:
+Either way, the installer will:
 
 - Check for `uv` and offer to install it if it's missing
 - Prompt for your Onshape access + secret key (secret input is hidden)
@@ -197,7 +217,13 @@ systemctl --user disable --now onshape-bambu-bridge
 
 ```bash
 ./uninstall.sh
+# or, without a checkout:
+curl -fsSL https://raw.githubusercontent.com/marijn070/onshape-bambu-bridge/main/uninstall.sh | bash
 ```
+
+It stops and removes the systemd service and `~/.local/share/onshape-bambu-bridge`,
+and asks before touching `~/.config/onshape-bambu-bridge` (your API key) —
+say no to keep your config for a later reinstall.
 
 ## Project layout
 
