@@ -24,6 +24,7 @@ a native binary all work).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -34,10 +35,15 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+
+# Reuse uvicorn's own logger so entries land in `journalctl --user -u
+# onshape-bambu-bridge` with the same formatting as its request logs.
+logger = logging.getLogger("uvicorn.error")
 
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "onshape-bambu-bridge"
 CONFIG_PATH = CONFIG_DIR / "config.json"
@@ -64,6 +70,17 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(HTTPException)
+async def logged_http_exception(request: Request, exc: HTTPException):
+    # Every raise HTTPException(...) below sends its detail message to the
+    # browser, but nothing server-side otherwise - a 5xx here previously
+    # left no trace in `journalctl`, only in whatever the Tampermonkey
+    # modal briefly showed before you dismissed it.
+    if exc.status_code >= 500:
+        logger.error("%s %s -> %s: %s", request.method, request.url.path, exc.status_code, exc.detail)
+    return await http_exception_handler(request, exc)
 
 
 def onshape_client() -> httpx.Client:
