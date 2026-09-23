@@ -154,10 +154,17 @@ def list_parts(documentId: str, workspaceId: str, elementId: str) -> dict[str, A
     return {"parts": parts}
 
 
-def export_3mf(document_id: str, workspace_id: str, element_id: str, part_id: str) -> bytes:
-    """Export a part as 3MF via Onshape's async translation API.
+_RETRYABLE_STATUS = 599  # internal marker, never sent to a client
+_TRANSLATION_RETRIES = 2  # extra attempts after the first, on top of 1 initial try
 
-    Flow: POST translation -> poll -> GET externaldata blob.
+
+def _attempt_export_3mf(document_id: str, workspace_id: str, element_id: str, part_id: str) -> bytes:
+    """One attempt at exporting a part as 3MF via Onshape's async translation API.
+
+    Flow: POST translation -> poll -> GET externaldata blob. Raises
+    HTTPException(_RETRYABLE_STATUS, ...) when the translation itself
+    reports FAILED - Onshape's translation queue is flaky and often
+    succeeds on an identical retry a few seconds later.
     """
     auth = (CFG["onshape_access_key"], CFG["onshape_secret_key"])
     base = CFG["onshape_base_url"]
@@ -200,9 +207,24 @@ def export_3mf(document_id: str, workspace_id: str, element_id: str, part_id: st
                 raise HTTPException(dr.status_code, f"3MF download failed: {dr.text[:400]}")
             return dr.content
         if state == "FAILED":
-            raise HTTPException(500, f"Translation failed: {body.get('failureReason')}")
+            raise HTTPException(_RETRYABLE_STATUS, f"Translation failed: {body.get('failureReason')}")
         time.sleep(0.6)
     raise HTTPException(504, "Timed out waiting for Onshape 3MF translation")
+
+
+def export_3mf(document_id: str, workspace_id: str, element_id: str, part_id: str) -> bytes:
+    last_error: HTTPException | None = None
+    for attempt in range(1 + _TRANSLATION_RETRIES):
+        try:
+            return _attempt_export_3mf(document_id, workspace_id, element_id, part_id)
+        except HTTPException as e:
+            if e.status_code != _RETRYABLE_STATUS:
+                raise
+            last_error = e
+            if attempt < _TRANSLATION_RETRIES:
+                time.sleep(1.5)
+    assert last_error is not None
+    raise HTTPException(500, last_error.detail)
 
 
 def export_stl(document_id: str, workspace_id: str, element_id: str, part_id: str) -> bytes:
